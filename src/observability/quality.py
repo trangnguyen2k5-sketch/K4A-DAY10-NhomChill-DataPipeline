@@ -15,6 +15,9 @@ from core.config import Settings
 from core.utils import write_json
 
 
+import json
+import pathlib
+
 def run_data_quality_checks(df: pd.DataFrame, settings: Settings, report_name: str) -> dict[str, Any]:
     context = gx.get_context(mode="ephemeral")
     data_source = context.data_sources.add_pandas(name="papers_source")
