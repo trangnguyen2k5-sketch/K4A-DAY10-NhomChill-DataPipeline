@@ -108,14 +108,21 @@ python script/run_phase1.py
 
 ## 8. Phân tích kết quả
 
-*(Phần này sẽ được cập nhật thêm sau khi TV3 và TV4 hoàn thiện và chạy xong Phase 2 - Corrupted & Repaired)*
+### Metrics chính
+
+| Metric/signal          | Baseline | Corrupted | Repaired | Nhận xét của cá nhân |
+| ---------------------- | -------: | --------: | -------: | ------------------------- |
+| `retrieval_hit_rate` |      1.0 |       0.7917 |      1.0 | Rớt hơn 20% do bị xoá mất 5 dòng và xoá trắng summary 5 dòng. Mất content nên DB không retrieve được. |
+| `mean_token_f1`      |      1.0 |       0.8271 |      1.0 | Sai số gia tăng. Khi không có context đúng, Agent sinh ra từ vựng sai lệch. |
+| `judge_accuracy`     |      1.0 |       0.8333 |      1.0 | Giám khảo Gemini chấm rớt vì Agent trả lời thiếu chính xác. Đã phục hồi hoàn hảo về 1.0. |
+| `mean_judge_score`   |      5.0 |       4.25 |      5.0 | Từ điểm tuyệt đối (5.0), rớt xuống mức khá (4.25). |
+| Quality checks         |      True |       False |      True | Bắt lỗi hoàn hảo nhờ cấu hình Great Expectations. |
+| Freshness status       |      True |       False |      True | Phát hiện ôi thiu lập tức khi dữ liệu bị cộng thêm 200 ngày. |
 
 ### Kết luận từ số liệu
 
-Hoàn thành hai chuỗi nguyên nhân–bằng chứng sau:
-
-1. \[Dữ liệu bị lỗi (Corrupted)] → \[Quality Gate báo False / Cảnh báo đỏ] → \[Hit Rate giảm mạnh, LLM trả lời sai].
-2. \[Quá trình Repair ghi đè từ raw] → \[Quality Gate xanh trở lại] → \[Các chỉ số RAG Agent trở về ngưỡng Baseline].
+1. Dữ liệu bị tiêm rác (xóa dòng, rỗng chữ) → **Quality Gate phát cờ False** → RAG Hit Rate rớt xuống 0.79 và Accuracy tụt xuống 0.83.
+2. Code kích hoạt Repair ghi đè (build_clean_dataframe từ raw JSON lại) → **Quality Gate phục hồi cờ True** → RAG Hit Rate phục hồi tuyệt đối 100%.
 
 ## 9. Điều học được và hướng cải thiện
 
