@@ -1,89 +1,104 @@
 from __future__ import annotations
 
 from typing import Any
-
+import great_expectations as gx
+from great_expectations.expectations.expectation import ExpectationConfiguration
+from great_expectations.expectations.core import (
+    ExpectTableRowCountToBeBetween,
+    ExpectColumnValuesToNotBeNull,
+    ExpectColumnValuesToBeUnique,
+    ExpectColumnValueLengthsToBeBetween
+)
 import pandas as pd
 
 from core.config import Settings
+from core.utils import write_json
 
 
 import json
 import pathlib
 
 def run_data_quality_checks(df: pd.DataFrame, settings: Settings, report_name: str) -> dict[str, Any]:
-    """TODO(student): tao bo data quality checks.
-
-    Pseudo-code:
-    1. Check row count.
-    2. Check `paper_id` not null va unique.
-    3. Check `title` not null.
-    4. Check do dai `summary`.
-    5. Check freshness bang `age_days`.
-    6. Ghi ket qua vao `data/quality/`.
-    """
-    row_count = len(df)
-    paper_id_ok = bool(df["paper_id"].notna().all() and df["paper_id"].is_unique)
-    title_ok = bool(df["title"].notna().all())
-    summary_ok = bool((df["summary"].fillna("").str.len() > 0).all()) if "summary" in df.columns else False
-    freshness_ok = bool((df["age_days"] >= 0).all()) if "age_days" in df.columns else False
+    context = gx.get_context(mode="ephemeral")
+    data_source = context.data_sources.add_pandas(name="papers_source")
+    data_asset = data_source.add_dataframe_asset(name="papers_asset")
+    batch_def = data_asset.add_batch_definition_whole_dataframe("papers_batch")
+    batch = batch_def.get_batch(batch_parameters={"dataframe": df})
     
-    success = paper_id_ok and title_ok and summary_ok and freshness_ok
+    suite = context.suites.add(gx.ExpectationSuite(name="papers_suite"))
     
-    report = {
+    suite.add_expectation(ExpectTableRowCountToBeBetween(min_value=5, max_value=5000))
+    suite.add_expectation(ExpectColumnValuesToNotBeNull(column="paper_id"))
+    suite.add_expectation(ExpectColumnValuesToNotBeNull(column="title"))
+    if "text_for_embedding" in df.columns:
+        suite.add_expectation(ExpectColumnValuesToNotBeNull(column="text_for_embedding"))
+    suite.add_expectation(ExpectColumnValuesToBeUnique(column="paper_id"))
+    suite.add_expectation(ExpectColumnValueLengthsToBeBetween(column="summary", min_value=30))
+    
+    validation_definition = context.validation_definitions.add(
+        gx.ValidationDefinition(
+            name="papers_validation",
+            data=batch_def,
+            suite=suite,
+        )
+    )
+    
+    checkpoint = context.checkpoints.add(
+        gx.Checkpoint(
+            name="papers_checkpoint",
+            validation_definitions=[validation_definition],
+        )
+    )
+    
+    result = checkpoint.run(batch_parameters={"dataframe": df})
+    
+    success = result.success
+    results_dict = {
         "success": success,
-        "row_count": row_count,
-        "paper_id_ok": paper_id_ok,
-        "title_ok": title_ok,
-        "summary_ok": summary_ok,
-        "freshness_ok": freshness_ok
+        "run_id": str(result.run_id) if hasattr(result, 'run_id') and result.run_id else None
     }
     
-    report_file = settings.paths.quality_dir / f"{report_name}.json"
-    settings.paths.quality_dir.mkdir(parents=True, exist_ok=True)
+    report_path = settings.paths.baseline_quality_report.parent / f"{report_name}_gx_report.json"
+    write_json(report_path, results_dict)
     
-    with open(report_file, "w", encoding="utf-8") as f:
-        json.dump(report, f, indent=2, ensure_ascii=False)
-        
-    return report
+    return {
+        "success": success,
+        "run_id": results_dict["run_id"],
+        "report_path": str(report_path)
+    }
 
 
 def build_freshness_report(df: pd.DataFrame, settings: Settings, report_path) -> dict[str, Any]:
-    """TODO(student): tong hop freshness report.
+    if df.empty:
+        payload = {
+            "latest_published": None,
+            "oldest_published": None,
+            "stale_rows": 0,
+            "total_rows": 0,
+            "is_fresh": False,
+        }
+        write_json(report_path, payload)
+        return payload
 
-    Pseudo-code:
-    1. Tim latest va oldest published date.
-    2. Dem so dong stale.
-    3. Tao payload:
-       - latest_published
-       - oldest_published
-       - stale_rows
-       - total_rows
-       - is_fresh
-    4. Ghi JSON report.
-    """
-    if "published_date" in df.columns:
-        latest = df["published_date"].max()
-        oldest = df["published_date"].min()
-        latest_str = latest.isoformat() if hasattr(latest, "isoformat") else str(latest)
-        oldest_str = oldest.isoformat() if hasattr(oldest, "isoformat") else str(oldest)
-    else:
-        latest_str, oldest_str = None, None
-        
-    stale_rows = int((df["age_days"] > settings.freshness_threshold_days).sum()) if "age_days" in df.columns else 0
+    latest_published = df["published"].max() if "published" in df.columns else None
+    oldest_published = df["published"].min() if "published" in df.columns else None
     total_rows = len(df)
-    is_fresh = stale_rows == 0
+    
+    stale_rows = 0
+    if "age_days" in df.columns:
+        stale_rows = int((df["age_days"] > 180).sum())
+    
+    stale_ratio = stale_rows / total_rows if total_rows > 0 else 0
+    is_fresh = stale_ratio <= 0.25
     
     payload = {
-        "latest_published": latest_str,
-        "oldest_published": oldest_str,
+        "latest_published": str(latest_published),
+        "oldest_published": str(oldest_published),
         "stale_rows": stale_rows,
         "total_rows": total_rows,
-        "is_fresh": is_fresh
+        "is_fresh": is_fresh,
+        "stale_ratio": stale_ratio
     }
     
-    pathlib.Path(report_path).parent.mkdir(parents=True, exist_ok=True)
-    
-    with open(report_path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
-        
+    write_json(report_path, payload)
     return payload

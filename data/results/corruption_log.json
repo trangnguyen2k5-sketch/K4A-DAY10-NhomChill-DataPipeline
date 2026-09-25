@@ -1,0 +1,6 @@
+{
+  "dropped_rows": 5,
+  "blank_summary_rows": 5,
+  "duplicated_rows": 5,
+  "staleness_injected": 200
+}
