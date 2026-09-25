@@ -35,9 +35,10 @@ def main() -> None:
 
     # --- Các phần dưới đây sẽ do Thành viên 3 và 4 làm, Thành viên 1 kết nối vào ---
     # 5. Build Chroma index (Thành viên 3)
-    logger.info("5. (TODO) Build Chroma index...")
-    # from retrieval.index import build_chroma_index
-    # build_chroma_index(df, settings, settings.baseline_collection_name)
+    logger.info("5. Build Chroma index...")
+    from retrieval.index import LocalEmbeddingIndex
+    index = LocalEmbeddingIndex.build(df, settings, settings.paths.embeddings_json)
+    logger.info(f" -> Built Chroma collection: {index.collection_name}")
 
     # 6. Tao hoac load evaluation set (Thành viên 4)
     logger.info("6. (TODO) Build/Load evaluation set...")
@@ -57,7 +58,16 @@ def main() -> None:
     # 9. Create Markdown report (Thành viên 4)
     logger.info("9. (TODO) Create report...")
 
-    logger.info("Phase 1 Data Foundation (Member 1 & 2) Complete!")
+    # 10. Demo QA Agent (Thành viên 3)
+    logger.info("10. Demo QA Agent...")
+    from retrieval.agent import build_agent, run_agent_question
+    agent = build_agent(settings, index)
+    sample_question = "What is the summary of the paper 'Agentic Retrieval-Augmented Generation for Knowledge-Intensive Tasks'?"
+    logger.info(f" -> Question: {sample_question}")
+    answer = run_agent_question(agent, sample_question)
+    logger.info(f" -> Agent Answer: {answer}")
+
+    logger.info("Phase 1 Data Foundation & Indexing Complete!")
 
 
 if __name__ == "__main__":
